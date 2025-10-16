@@ -3,6 +3,8 @@ import pandas as pd
 import csv
 import io
 
+
+
 st.set_page_config(page_title="Fusionador y Analizador de Datos", layout="wide")
 st.title("📊 Fusionador y Analizador Dinámico de Archivos")
 
@@ -48,54 +50,121 @@ if uploaded_files:
                 merged_df = pd.merge(merged_df, df, on=common_cols, how="outer")
     else:
         merged_df = dfs[0]
-        
-    # === 3️⃣ Previsualización del DataFrame combinado ===
-    if merged_df is not None:
-        st.write("### 📋 Previsualización del DataFrame combinado")
-        st.dataframe(merged_df.head(20))
+# Después del merge
+if 'merged_df' in locals() and merged_df is not None:
+    # Crear id_base único por fila
+    merged_df = merged_df.reset_index(drop=True)  # aseguramos índice limpio
+    merged_df.insert(0, 'id_base', merged_df.index + 1)  # ID empezando en 1
 
-# === 4️⃣ Previsualización del DataFrame combinado ===
-        st.write("### 📋 Previsualización del DataFrame combinado")
-        st.dataframe(merged_df.head(20))
+import streamlit as st
+import pandas as pd
+import re
 
-# === 5️⃣ Tabla dinámica interactiva ===
-if 'merged_df' in locals():
-    st.sidebar.header("⚙️ Tabla Dinámica Interactiva")
+if 'merged_df' in locals() and merged_df is not None:
 
-    all_cols = merged_df.columns.tolist()
+    st.write("## 📋 Previsualización del DataFrame combinado")
+    st.write(f"Filas: {merged_df.shape[0]} | Columnas: {merged_df.shape[1]}")
 
-    # Selección de filas (agrupamiento)
-    rows = st.sidebar.multiselect("Seleccioná columnas para filas", all_cols)
+    # --- Layout: filtros y previsualización ---
+    col_filters, col_preview = st.columns([1, 3])
 
-    # Selección de columnas de valores
-    values = st.sidebar.multiselect("Seleccioná columnas para valores", all_cols)
+    with col_filters:
+        with st.expander("⚙️ Opciones de Filtrado", expanded=True):
+            # Selección de columnas a mostrar
+            selected_cols = st.multiselect(
+                "Columnas a mostrar",
+                merged_df.columns.tolist(),
+                default=merged_df.columns.tolist()
+            )
+            # Filtrado por texto
+            text_filter_col = st.selectbox(
+                "Filtrar por texto en columna (opcional)",
+                [None] + merged_df.columns.tolist()
+            )
+            text_filter_value = None
+            if text_filter_col:
+                text_filter_value = st.text_input(f"Texto a filtrar en '{text_filter_col}'")
 
-    # Función de agregación
-    aggfunc = st.sidebar.selectbox(
-        "Función de agregación",
-        ["sum", "mean", "count", "max", "min"]
-    )
+    with col_preview:
+        df_preview = merged_df[selected_cols].copy()
+        if text_filter_col and text_filter_value:
+            df_preview = df_preview[df_preview[text_filter_col].astype(str).str.contains(text_filter_value, case=False, na=False)]
+        st.dataframe(df_preview, height=500, use_container_width=True)
 
-    if values and rows:
-        # Crear tabla dinámica
-        pivot = pd.pivot_table(
-            merged_df,
-            index=rows,
-            values=values,
-            aggfunc=aggfunc,
-            fill_value=0
-        ).reset_index()
-
-        st.write("### 🔍 Resultado de la tabla dinámica")
-        st.dataframe(pivot)
-
-        # Botón para descargar
-        csv = pivot.to_csv(index=False).encode("utf-8")
+        # Botón de descarga cerca del DataFrame
         st.download_button(
-            label="📥 Descargar tabla dinámica como CSV",
-            data=csv,
-            file_name="tabla_dinamica.csv",
+            label="📥 Descargar previsualización como CSV",
+            data=df_preview.to_csv(index=False).encode("utf-8"),
+            file_name="previsualizacion.csv",
             mime="text/csv"
         )
+# --- Tabla dinámica ---
+st.write("## 🔄 Tabla Dinámica Interactiva")
+col_table_filters, col_table_result = st.columns([1, 3])
+
+with col_table_filters:
+    with st.expander("⚙️ Opciones de Tabla Dinámica", expanded=True):
+        all_cols = merged_df.columns.tolist()
+
+        # Columnas para filas y valores
+        rows = st.multiselect("Columnas para filas", all_cols)
+        values = st.multiselect("Columnas para valores", all_cols)
+
+        # Función de agregación para cada columna de valores
+        agg_options = ["sum", "mean", "count", "max", "min"]
+        agg_dict = {val: st.selectbox(f"Función de agregación para '{val}'", agg_options) for val in values} if values else {}
+
+        # --- Filtro opcional al final ---
+        filter_col = st.selectbox("Filtrar por columna (opcional)", [None] + all_cols)
+        filter_val = None
+        if filter_col:
+            filter_val = st.text_input(f"Valor a filtrar en '{filter_col}' (ej: >30, <=50, ==18, texto parcial)")
+
+# --- Resultado de la tabla dinámica ---
+df_table = merged_df.copy()
+
+# Aplicar filtro si corresponde
+if filter_col and filter_val:
+    if pd.api.types.is_numeric_dtype(df_table[filter_col]):
+        m = re.match(r'(>=|<=|>|<|==)\s*(\d+(\.\d+)?)', filter_val.strip())
+        if m:
+            op, num, _ = m.groups()
+            num = float(num)
+            if op == '>': df_table = df_table[df_table[filter_col] > num]
+            if op == '<': df_table = df_table[df_table[filter_col] < num]
+            if op == '>=': df_table = df_table[df_table[filter_col] >= num]
+            if op == '<=': df_table = df_table[df_table[filter_col] <= num]
+            if op == '==': df_table = df_table[df_table[filter_col] == num]
+        else:
+            st.warning("Formato inválido para filtro numérico. Usá: >30, <=50, ==18")
     else:
-        st.info("Seleccioná al menos una columna para filas y una columna para valores para generar la tabla dinámica.")
+        df_table = df_table[df_table[filter_col].astype(str).str.contains(filter_val, case=False, na=False)]
+
+with col_table_result:
+    if rows and values:
+        try:
+            pivot = pd.pivot_table(
+                df_table,
+                index=rows,
+                values=values,
+                aggfunc=agg_dict,
+                fill_value=0
+            ).reset_index()
+
+            # Mostrar tabla dinámica
+            st.dataframe(pivot, height=500, use_container_width=True)
+
+        except Exception as e:
+            st.error(f"❌ Error al crear la tabla dinámica: {e}")
+    else:
+        st.info("Seleccioná al menos una columna para filas y una para valores para generar la tabla dinámica.")
+
+# --- Botón de descarga al final de todo ---
+if 'pivot' in locals():
+    st.markdown("---")  # separador visual
+    st.download_button(
+        label="📥 Descargar tabla dinámica CSV",
+        data=pivot.to_csv(index=False).encode("utf-8"),
+        file_name="tabla_dinamica.csv",
+        mime="text/csv"
+    )
