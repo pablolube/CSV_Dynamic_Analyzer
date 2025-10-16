@@ -10,7 +10,7 @@ Subí tus archivos **CSV o Excel (.xlsx)**.
 El programa los leerá, los unirá automáticamente por columnas comunes y permitirá analizarlos dinámicamente.
 """)
 
-# === 1️⃣ Subida de archivos ===
+# Subida de archivos
 uploaded_files = st.file_uploader(
     "Subí tus archivos CSV o Excel", type=["csv", "xlsx"], accept_multiple_files=True
 )
@@ -20,19 +20,33 @@ if uploaded_files:
     for uploaded_file in uploaded_files:
         try:
             if uploaded_file.name.endswith(".csv"):
-                df = pd.read_csv(uploaded_file, sep=';', low_memory=False, on_bad_lines='skip')
+                # Leemos el contenido como string
+                content = uploaded_file.getvalue().decode("utf-8", errors="ignore")
+                
+                # Detectamos el delimitador automáticamente
+                sample = content.splitlines()[0]
+                dialect = csv.Sniffer().sniff(sample)
+                
+                # Convertimos a StringIO y leemos con pandas
+                df = pd.read_csv(io.StringIO(content), sep=dialect.delimiter, low_memory=False, on_bad_lines='skip')
             else:
                 df = pd.read_excel(uploaded_file)
+            
             dfs.append(df)
             st.write(f"✅ Archivo leído: {uploaded_file.name} ({len(df)} filas)")
         except Exception as e:
-            st.error(f"Error al leer {uploaded_file.name}: {e}")
+            st.error(f"❌ Error al leer {uploaded_file.name}: {e}")
 
-    # === 2️⃣ Unión automática por columnas comunes ===
+    # Verificamos que haya al menos un DataFrame
+    if not dfs:
+        st.stop()
+
+    # Unión automática por columnas comunes
     if len(dfs) > 1:
         common_cols = list(set.intersection(*(set(df.columns) for df in dfs)))
         if not common_cols:
             st.error("❌ No hay columnas comunes entre los archivos.")
+            merged_df = None
         else:
             st.write("Columnas comunes detectadas:", common_cols)
             merged_df = dfs[0]
@@ -40,6 +54,7 @@ if uploaded_files:
                 merged_df = pd.merge(merged_df, df, on=common_cols, how="outer")
     else:
         merged_df = dfs[0]
+        
     # === 3️⃣ Previsualización del DataFrame combinado ===
     if merged_df is not None:
         st.write("### 📋 Previsualización del DataFrame combinado")
