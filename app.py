@@ -1,7 +1,8 @@
 import streamlit as st
 import pandas as pd
+import csv
+import io
 
-# === CONFIGURACIÓN GENERAL ===
 st.set_page_config(page_title="Fusionador y Analizador de Datos", layout="wide")
 st.title("📊 Fusionador y Analizador Dinámico de Archivos")
 
@@ -10,7 +11,6 @@ Subí tus archivos **CSV o Excel (.xlsx)**.
 El programa los leerá, los unirá automáticamente por columnas comunes y permitirá analizarlos dinámicamente.
 """)
 
-# Subida de archivos
 uploaded_files = st.file_uploader(
     "Subí tus archivos CSV o Excel", type=["csv", "xlsx"], accept_multiple_files=True
 )
@@ -20,24 +20,18 @@ if uploaded_files:
     for uploaded_file in uploaded_files:
         try:
             if uploaded_file.name.endswith(".csv"):
-                # Leemos el contenido como string
                 content = uploaded_file.getvalue().decode("utf-8", errors="ignore")
-                
-                # Detectamos el delimitador automáticamente
-                sample = content.splitlines()[0]
+                sample = "\n".join(content.splitlines()[:10])
                 dialect = csv.Sniffer().sniff(sample)
-                
-                # Convertimos a StringIO y leemos con pandas
                 df = pd.read_csv(io.StringIO(content), sep=dialect.delimiter, low_memory=False, on_bad_lines='skip')
             else:
                 df = pd.read_excel(uploaded_file)
-            
+
             dfs.append(df)
             st.write(f"✅ Archivo leído: {uploaded_file.name} ({len(df)} filas)")
         except Exception as e:
             st.error(f"❌ Error al leer {uploaded_file.name}: {e}")
 
-    # Verificamos que haya al menos un DataFrame
     if not dfs:
         st.stop()
 
