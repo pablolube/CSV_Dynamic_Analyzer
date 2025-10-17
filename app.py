@@ -7,6 +7,8 @@ import io
 
 st.set_page_config(page_title="Fusionador y Analizador de Datos", layout="wide")
 st.title("📊 Fusionador y Analizador Dinámico de Archivos")
+# 🔧 Inicializar merged_df
+merged_df = None
 
 st.write("""
 Subí tus archivos **CSV o Excel (.xlsx)**.  
@@ -98,73 +100,70 @@ if 'merged_df' in locals() and merged_df is not None:
             file_name="previsualizacion.csv",
             mime="text/csv"
         )
-# --- Tabla dinámica ---
 st.write("## 🔄 Tabla Dinámica Interactiva")
-col_table_filters, col_table_result = st.columns([1, 3])
 
-with col_table_filters:
-    with st.expander("⚙️ Opciones de Tabla Dinámica", expanded=True):
-        all_cols = merged_df.columns.tolist()
+if merged_df is not None:
+    col_table_filters, col_table_result = st.columns([1, 3])
 
-        # Columnas para filas y valores
-        rows = st.multiselect("Columnas para filas", all_cols)
-        values = st.multiselect("Columnas para valores", all_cols)
+    with col_table_filters:
+        with st.expander("⚙️ Opciones de Tabla Dinámica", expanded=True):
+            all_cols = merged_df.columns.tolist()
 
-        # Función de agregación para cada columna de valores
-        agg_options = ["sum", "mean", "count", "max", "min"]
-        agg_dict = {val: st.selectbox(f"Función de agregación para '{val}'", agg_options) for val in values} if values else {}
+            rows = st.multiselect("Columnas para filas", all_cols)
+            values = st.multiselect("Columnas para valores", all_cols)
 
-        # --- Filtro opcional al final ---
-        filter_col = st.selectbox("Filtrar por columna (opcional)", [None] + all_cols)
-        filter_val = None
-        if filter_col:
-            filter_val = st.text_input(f"Valor a filtrar en '{filter_col}' (ej: >30, <=50, ==18, texto parcial)")
+            agg_options = ["sum", "mean", "count", "max", "min"]
+            agg_dict = {val: st.selectbox(f"Función de agregación para '{val}'", agg_options)
+                        for val in values} if values else {}
 
-# --- Resultado de la tabla dinámica ---
-df_table = merged_df.copy()
+            filter_col = st.selectbox("Filtrar por columna (opcional)", [None] + all_cols)
+            filter_val = None
+            if filter_col:
+                filter_val = st.text_input(f"Valor a filtrar en '{filter_col}' (ej: >30, <=50, ==18, texto parcial)")
 
-# Aplicar filtro si corresponde
-if filter_col and filter_val:
-    if pd.api.types.is_numeric_dtype(df_table[filter_col]):
-        m = re.match(r'(>=|<=|>|<|==)\s*(\d+(\.\d+)?)', filter_val.strip())
-        if m:
-            op, num, _ = m.groups()
-            num = float(num)
-            if op == '>': df_table = df_table[df_table[filter_col] > num]
-            if op == '<': df_table = df_table[df_table[filter_col] < num]
-            if op == '>=': df_table = df_table[df_table[filter_col] >= num]
-            if op == '<=': df_table = df_table[df_table[filter_col] <= num]
-            if op == '==': df_table = df_table[df_table[filter_col] == num]
+    df_table = merged_df.copy()
+
+    # Aplicar filtro si corresponde
+    if filter_col and filter_val:
+        if pd.api.types.is_numeric_dtype(df_table[filter_col]):
+            m = re.match(r'(>=|<=|>|<|==)\s*(\d+(\.\d+)?)', filter_val.strip())
+            if m:
+                op, num, _ = m.groups()
+                num = float(num)
+                if op == '>': df_table = df_table[df_table[filter_col] > num]
+                if op == '<': df_table = df_table[df_table[filter_col] < num]
+                if op == '>=': df_table = df_table[df_table[filter_col] >= num]
+                if op == '<=': df_table = df_table[df_table[filter_col] <= num]
+                if op == '==': df_table = df_table[df_table[filter_col] == num]
+            else:
+                st.warning("Formato inválido para filtro numérico. Usá: >30, <=50, ==18")
         else:
-            st.warning("Formato inválido para filtro numérico. Usá: >30, <=50, ==18")
-    else:
-        df_table = df_table[df_table[filter_col].astype(str).str.contains(filter_val, case=False, na=False)]
+            df_table = df_table[df_table[filter_col].astype(str).str.contains(filter_val, case=False, na=False)]
 
-with col_table_result:
-    if rows and values:
-        try:
-            pivot = pd.pivot_table(
-                df_table,
-                index=rows,
-                values=values,
-                aggfunc=agg_dict,
-                fill_value=0
-            ).reset_index()
+    with col_table_result:
+        if rows and values:
+            try:
+                pivot = pd.pivot_table(
+                    df_table,
+                    index=rows,
+                    values=values,
+                    aggfunc=agg_dict,
+                    fill_value=0
+                ).reset_index()
 
-            # Mostrar tabla dinámica
-            st.dataframe(pivot, height=500, use_container_width=True)
+                st.dataframe(pivot, height=500, use_container_width=True)
 
-        except Exception as e:
-            st.error(f"❌ Error al crear la tabla dinámica: {e}")
-    else:
-        st.info("Seleccioná al menos una columna para filas y una para valores para generar la tabla dinámica.")
+                # Descargar CSV
+                st.download_button(
+                    label="📥 Descargar tabla dinámica CSV",
+                    data=pivot.to_csv(index=False).encode("utf-8"),
+                    file_name="tabla_dinamica.csv",
+                    mime="text/csv"
+                )
 
-# --- Botón de descarga al final de todo ---
-if 'pivot' in locals():
-    st.markdown("---")  # separador visual
-    st.download_button(
-        label="📥 Descargar tabla dinámica CSV",
-        data=pivot.to_csv(index=False).encode("utf-8"),
-        file_name="tabla_dinamica.csv",
-        mime="text/csv"
-    )
+            except Exception as e:
+                st.error(f"❌ Error al crear la tabla dinámica: {e}")
+        else:
+            st.info("Seleccioná al menos una columna para filas y una para valores para generar la tabla dinámica.")
+else:
+    st.warning("🔹 Subí y fusioná archivos para habilitar la tabla dinámica.")
